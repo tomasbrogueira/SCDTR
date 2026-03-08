@@ -3,3 +3,7 @@ build/
 bin/
 
 guides/
+
+scripts/
+.venv/
+ARCHITECTURE.md
