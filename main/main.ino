@@ -3,7 +3,6 @@
 #include "lux_sensor.h"
 #include "calibrator.h"
 #include "pid_controller.h"
-#include "kalman_filter.h"
 #include "data_buffer.h"
 #include "performance_tracker.h"
 #include "serial_command_parser.h"
@@ -50,7 +49,6 @@ LedDriver   led;
 LuxSensor   sensor;
 Calibrator  *calibrator = nullptr;
 PIDController pid;
-KalmanFilter  kalman;
 DataBuffer    dataBuffer;
 SerialCommandParser commandParser;
 
@@ -108,8 +106,8 @@ void setup() {
   Serial.print("G="); Serial.print(static_gain, 2); Serial.println(" lux/duty");
 
   // Compute PID gains from static gain
-  float Kp = (static_gain > 0) ? 1.0f / static_gain : 0.01f;
-  float Ki = Kp * 2.0f;   // integral time ≈ 0.5 s
+  float Kp = (static_gain > 0) ? 0.75f / static_gain : 0.01f;
+  float Ki = Kp * 2.0f;   // Ki/Kp = 2
   float Kd = 0.0f;        // derivative not needed (RC filter provides damping)
 
   pid = PIDController(Kp, Ki, Kd, T, 0.0f, 1.0f);
@@ -117,15 +115,13 @@ void setup() {
   pid.setFeedforward(true);
   pid.setFeedback(true);
   pid.configureFeedforward(static_gain, lux_background);
-
-  // Seed Kalman filter with boot calibration values
-  kalman.init(static_gain, lux_background);
+  pid.setBeta(0.70f);
 
   Serial.print("PID: Kp="); Serial.print(Kp, 6);
   Serial.print(" Ki="); Serial.print(Ki, 6);
   Serial.print(" Kd="); Serial.println(Kd, 6);
 
-  Serial.println("\nGET:    g <key> [<i>]  (l,r,b,G,e,k | y,u,o,d,p,E,V,F,...)");
+  Serial.println("GET:    g <key> [<i>]  (l,r,b,G,e | y,u,o,d,p,E,V,F,...)");
   Serial.println("SET:    s H|L|p|b <val> | r|u|o <i> <val>");
   Serial.println("TOGGLE: c|f|w on|off");
   Serial.println("STREAM: s <y|u|r> <i> / S <y|u|r> <i>");
@@ -150,16 +146,7 @@ void loop() {
   if (now - last_sample_us < SAMPLE_PERIOD_US) return;
   last_sample_us += SAMPLE_PERIOD_US;
 
-  // Read sensor — raw for Kalman, filtered for PID
-  float lux_raw = sensor.readRaw();
-  lux_measured = sensor.readMedianFiltered(); // Using Quickselect median filter as per the professor's hint
-
-  // Kalman filter: update G and background estimates with RAW data
-  // (EMA-filtered data would corrupt the noise model)
-  kalman.update(led.getDuty(), lux_raw);
-  static_gain = kalman.getGain();
-  lux_background = kalman.getBackground();
-  pid.configureFeedforward(static_gain, lux_background);
+  lux_measured = sensor.readMedianFiltered();
 
   // Control
   if (control_active) {

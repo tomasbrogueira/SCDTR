@@ -5,7 +5,6 @@
 #include "led_driver.h"
 #include "lux_sensor.h"
 #include "pid_controller.h"
-#include "kalman_filter.h"
 #include "data_buffer.h"
 #include "performance_tracker.h"
 
@@ -27,7 +26,6 @@ extern const float MAX_POWER_W;
 extern LedDriver   led;
 extern LuxSensor   sensor;
 extern PIDController pid;
-extern KalmanFilter  kalman;
 extern DataBuffer    dataBuffer;
 extern PerformanceTracker perf_tracker;
 
@@ -38,20 +36,33 @@ class SerialCommandParser {
 private:
     static const int CMD_BUF_SIZE = 64;
     char cmd_buf[CMD_BUF_SIZE];
+    int cmd_len = 0;
 
 public:
+    // Non-blocking parse: reads all available characters without waiting.
+    // Processes complete commands when '\n' or '\r' is received.
     void parse() {
-        if (!Serial.available()) return;
-
-        int len = Serial.readBytesUntil('\n', cmd_buf, CMD_BUF_SIZE - 1);
-        cmd_buf[len] = '\0';
-
-        // Trim trailing whitespace / carriage return
-        while (len > 0 && (cmd_buf[len-1] == '\r' || cmd_buf[len-1] == ' ')) {
-            cmd_buf[--len] = '\0';
+        while (Serial.available()) {
+            char c = Serial.read();
+            if (c == '\n' || c == '\r') {
+                if (cmd_len == 0) continue;
+                cmd_buf[cmd_len] = '\0';
+                // Trim trailing spaces
+                while (cmd_len > 0 && cmd_buf[cmd_len - 1] == ' ') {
+                    cmd_buf[--cmd_len] = '\0';
+                }
+                if (cmd_len > 0) {
+                    processCommand(cmd_len);
+                }
+                cmd_len = 0;
+            } else if (cmd_len < CMD_BUF_SIZE - 1) {
+                cmd_buf[cmd_len++] = c;
+            }
         }
-        if (len == 0) return;
+    }
 
+private:
+    void processCommand(int len) {
         // --- Single-word commands ---
         if (strcmp(cmd_buf, "cal") == 0) {
             Serial.print("Calibrating... ");
@@ -100,12 +111,6 @@ public:
                 case 'b': Serial.print("b "); Serial.println(lux_background, 2); return;
                 case 'G': Serial.print("G "); Serial.println(static_gain, 2); return;
                 case 'e': Serial.print("e "); Serial.println(lux_reference - lux_measured, 2); return;
-                case 'k':
-                    Serial.print("k G="); Serial.print(kalman.getGain(), 4);
-                    Serial.print(" bg="); Serial.print(kalman.getBackground(), 2);
-                    Serial.print(" Pg="); Serial.print(kalman.getGainVariance(), 6);
-                    Serial.print(" Pb="); Serial.println(kalman.getBackgroundVariance(), 4);
-                    return;
             }
             // Unknown key: fall through to Table 1 handlers below
         }

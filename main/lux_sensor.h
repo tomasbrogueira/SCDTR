@@ -96,7 +96,6 @@ public:
       num_samples_log2(4), num_samples(16),
       median_window(5), median_idx(0), median_count(0)
   {
-    recomputeConstants();
   }
 
   // Deferred initialisation
@@ -137,24 +136,21 @@ public:
     median_idx = 0;
   }
 
-  // Median-filtered LUX reading using quickselect
+  // Median-filtered LUX reading using quickselect (reads ADC internally)
   float readMedianFiltered() {
+    // Insert into circular buffer
     float raw = readRaw();
-
-    // Store in circular buffer
     median_buffer[median_idx] = raw;
     median_idx = (median_idx + 1) % median_window;
     if (median_count < median_window) {
       median_count++;
     }
 
-    // Create a temporary array for quickselect (as it modifies the array)
+    // Find median via quickselect on a copy
     float temp_arr[MAX_MEDIAN_WINDOW];
     for (int i = 0; i < median_count; i++) {
         temp_arr[i] = median_buffer[i];
     }
-
-    // Return the median
     int k = median_count / 2;
     return quickselect(temp_arr, 0, median_count - 1, k);
   }

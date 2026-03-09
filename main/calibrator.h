@@ -20,6 +20,8 @@ private:
   int   settle_ms;
   int   gain_steps;
 
+  static const int MAX_STEPS = 21;
+
 public:
   Calibrator(LedDriver &led, LuxSensor &sensor,
              int settle_ms = 300, int gain_steps = 11)
@@ -38,22 +40,20 @@ public:
   // Sweep LED 0→100%, perform linear regression, return static gain (slope)
   // Also fills intercept_out if provided
   float measureStaticGain(float *intercept_out = nullptr) {
-    const int MAX_STEPS = 21;
-    int steps = constrain(gain_steps, 2, MAX_STEPS);
-    float duty_vals[MAX_STEPS];
-    float lux_vals[MAX_STEPS];
+    int count = constrain(gain_steps, 2, MAX_STEPS);
+    float duty[MAX_STEPS], lux[MAX_STEPS];
 
-    for (int i = 0; i < steps; i++) {
-      float d = (float)i / (steps - 1);
-      duty_vals[i] = d;
+    for (int i = 0; i < count; i++) {
+      float d = (float)i / (count - 1);
+      duty[i] = d;
       led.setDutyCycle(d);
       delay(settle_ms);
-      lux_vals[i] = sensor.readRaw();
+      lux[i] = sensor.readRaw();
     }
     led.off();
 
     float slope, intercept, r2;
-    ridgeRegression(duty_vals, lux_vals, steps, slope, intercept, r2);
+    ridgeRegression(duty, lux, count, slope, intercept, r2);
 
     if (intercept_out) *intercept_out = intercept;
     return slope;

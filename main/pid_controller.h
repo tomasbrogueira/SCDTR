@@ -16,6 +16,7 @@ private:
   float prev_ref;         // previous reference (for bumpless transfer)
   float prev_d_term;      // previous filtered derivative term
   float prev_u_unsat;     // previous unsaturated output (for anti-windup)
+  float Kaw;              // cached anti-windup tracking gain
 
   bool feedback_on;
   bool feedforward_on;
@@ -32,17 +33,25 @@ private:
     return u;
   }
 
+  void updateKaw() {
+    if (Kd > 0.0f) Kaw = sqrtf(Ki / Kd);
+    else if (Ki > 0.0f && Kp > 0.0f) Kaw = Ki / Kp;
+    else Kaw = 1.0f;
+  }
+
 public:
   PIDController(float Kp, float Ki, float Kd, float T,
                 float u_min = 0.0f, float u_max = 1.0f)
     : Kp(Kp), Ki(Ki), Kd(Kd), T(T),
       u_min(u_min), u_max(u_max),
-      beta(0.2f), alpha_d(0.1f),
+      beta(0.75f), alpha_d(0.1f),
       integral(0.0f), prev_y(0.0f), prev_ref(0.0f),
-      prev_d_term(0.0f), prev_u_unsat(0.0f),
+      prev_d_term(0.0f), prev_u_unsat(0.0f), Kaw(1.0f),
       feedback_on(true), feedforward_on(false),
       antiwindup_on(true), backcalculation_on(true), bumpless_on(true),
-      ff_gain(0.0f), ff_background(0.0f) {}
+      ff_gain(0.0f), ff_background(0.0f) {
+    updateKaw();
+  }
 
   PIDController() : PIDController(0, 0, 0, 0.01f) {}
 
@@ -67,30 +76,30 @@ public:
     // Integral (forward Euler)
     integral += Ki * error * T;
 
-    // Anti-windup: back-calculation
+    // Anti-windup: back-calculation (uses cached Kaw)
     if (antiwindup_on) {
       if (backcalculation_on) {
           float u_sat = saturate(prev_u_unsat);
-          float aw_correction = (u_sat - prev_u_unsat);
-          float Kaw = (Kd > 0.0f) ? sqrtf(Ki / Kd)
-                                  : ((Ki > 0.0f && Kp > 0.0f) ? (Ki / Kp) : 1.0f);
-          integral += Kaw * aw_correction * T;
+          integral += Kaw * (u_sat - prev_u_unsat) * T;
       } else {
-        // stop integrating
-        integral = constrain(integral, u_min - p_term, u_max - p_term);
+        // Clamp integrator so total output stays within actuator limits
+        integral = constrain(integral, u_min - u_ff - p_term, u_max - u_ff - p_term);
       }
     }
 
-    // Low-pass filtered derivative
-    float d_raw = (T > 0.0f) ? -Kd * (y - prev_y) / T : 0.0f;
-    float d_term = alpha_d * d_raw + (1.0f - alpha_d) * prev_d_term;
+    // Low-pass filtered derivative (skip entirely when Kd == 0)
+    float d_term = 0.0f;
+    if (Kd > 0.0f) {
+      float d_raw = (T > 0.0f) ? -Kd * (y - prev_y) / T : 0.0f;
+      d_term = alpha_d * d_raw + (1.0f - alpha_d) * prev_d_term;
+      prev_d_term = d_term;
+    }
 
     float u_fb = p_term + integral + d_term;
     float u_unsat = u_ff + u_fb;
 
     prev_y = y;
     prev_ref = ref;
-    prev_d_term = d_term;
     prev_u_unsat = u_unsat;
 
     return saturate(u_unsat);
@@ -140,6 +149,7 @@ public:
     if (bumpless_on) {
       integral -= (_Kp - Kp_old) * (beta * prev_ref - prev_y);
     }
+    updateKaw();
   }
 
   // Ki bumpless: the running integral was accumulated with the old Ki.
@@ -149,6 +159,7 @@ public:
       integral *= _Ki / Ki;
     }
     Ki = _Ki;
+    updateKaw();
   }
 
   // Kd bumpless: rescale the filtered derivative term.
@@ -157,6 +168,7 @@ public:
       prev_d_term *= _Kd / Kd;
     }
     Kd = _Kd;
+    updateKaw();
   }
 
   void reset() {
