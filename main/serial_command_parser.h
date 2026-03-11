@@ -111,6 +111,7 @@ private:
                 case 'b': Serial.print("b "); Serial.println(lux_background, 2); return;
                 case 'G': Serial.print("G "); Serial.println(static_gain, 2); return;
                 case 'e': Serial.print("e "); Serial.println(lux_reference - lux_measured, 2); return;
+                case 'm': Serial.print("m "); Serial.println(sensor.getM(), 4); return;
             }
             // Unknown key: fall through to Table 1 handlers below
         }
@@ -174,6 +175,13 @@ private:
                     if (!val_str) { Serial.println("err missing value"); return; }
                     pid.setBeta(atof(val_str));
                     Serial.print("beta "); Serial.println(pid.getBeta(), 4);
+                    return;
+                }
+                case 'm': {
+                    if (!val_str) { Serial.println("err missing value"); return; }
+                    float new_m = atof(val_str);
+                    sensor.setCalibration(new_m, sensor.getB());
+                    Serial.print("m "); Serial.println(new_m, 4);
                     return;
                 }
             }

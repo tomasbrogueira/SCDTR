@@ -176,6 +176,9 @@ public:
     b = _b;
     recomputeConstants();
   }
+
+  float getM() const { return m; }
+  float getB() const { return b; }
 };
 
 #endif

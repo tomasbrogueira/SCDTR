@@ -24,7 +24,7 @@ private:
 
 public:
   Calibrator(LedDriver &led, LuxSensor &sensor,
-             int settle_ms = 300, int gain_steps = 11)
+             int settle_ms = 500, int gain_steps = 11)
     : led(led), sensor(sensor),
       settle_ms(settle_ms), gain_steps(gain_steps) {}
 

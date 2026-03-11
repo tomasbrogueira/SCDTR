@@ -14,7 +14,7 @@ const int ADC_PIN = A0;
 // ===================== LDR calibration constants =====================
 // log10(R) = m * log10(Lux) + b
 // Update these after running lux_calibrator and lux_m_finetune
-const float LDR_M = -0.8f;
+const float LDR_M = -0.89f;
 const float LDR_B = 6.5f;  // 6.15 and 6.85 so we simply take the average
 
 // ===================== Control loop timing =====================
@@ -92,7 +92,7 @@ void setup() {
   sensor.init(ADC_PIN, LDR_M, LDR_B, 10000.0f, 12, 4, 5); // 5 is the median_window_size
 
   // Calibrator needs references to led & sensor
-  static Calibrator cal(led, sensor, 300, 11);
+  static Calibrator cal(led, sensor, 500, 11);
   calibrator = &cal;
 
   Serial.println("=== Luminaire Controller ===\n");
@@ -106,16 +106,16 @@ void setup() {
   Serial.print("G="); Serial.print(static_gain, 2); Serial.println(" lux/duty");
 
   // Compute PID gains from static gain
-  float Kp = (static_gain > 0) ? 0.75f / static_gain : 0.01f;
-  float Ki = Kp * 2.0f;   // Ki/Kp = 2
-  float Kd = 0.0f;        // derivative not needed (RC filter provides damping)
+  float Kp = (static_gain > 0) ? 1.0f / static_gain : 0.01f;
+  float Ki = Kp * 3.0f;
+  float Kd = 0.0f;        // derivative not needed
 
   pid = PIDController(Kp, Ki, Kd, T, 0.0f, 1.0f);
   pid.setAntiWindup(true);
   pid.setFeedforward(true);
   pid.setFeedback(true);
   pid.configureFeedforward(static_gain, lux_background);
-  pid.setBeta(0.70f);
+  pid.setBeta(0.50f);
 
   Serial.print("PID: Kp="); Serial.print(Kp, 6);
   Serial.print(" Ki="); Serial.print(Ki, 6);
@@ -162,15 +162,15 @@ void loop() {
 
   // Stream (y, u, r can be active simultaneously)
   if (stream_y || stream_u || stream_r) {
-    unsigned long now_ms = millis();
+    unsigned long now_us = micros();
     if (stream_y) {
-      Serial.print("s y 1 "); Serial.print(lux_measured, 4); Serial.print(" "); Serial.println(now_ms);
+      Serial.print("s y 1 "); Serial.print(lux_measured, 4); Serial.print(" "); Serial.println(now_us);
     }
     if (stream_u) {
-      Serial.print("s u 1 "); Serial.print(led.getDuty(), 4); Serial.print(" "); Serial.println(now_ms);
+      Serial.print("s u 1 "); Serial.print(led.getDuty(), 4); Serial.print(" "); Serial.println(now_us);
     }
     if (stream_r) {
-      Serial.print("s r 1 "); Serial.print(lux_reference, 4); Serial.print(" "); Serial.println(now_ms);
+      Serial.print("s r 1 "); Serial.print(lux_reference, 4); Serial.print(" "); Serial.println(now_us);
     }
   }
 }

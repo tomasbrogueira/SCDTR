@@ -19,7 +19,7 @@ void setup() {
 
 void loop() {
   // Create calibrator using shared led & sensor objects
-  Calibrator cal(led, sensor, 300, 11);
+  Calibrator cal(led, sensor, 500, 11);
 
   float background = cal.measureBackground();
   Serial.print("Background LUX = ");
